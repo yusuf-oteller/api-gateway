@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      routes:
+        - id: hotel-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v1/hotels/**
+          filters:
+            - RewritePath=/api/v1/hotels/(?<segment>.*), /api/v1/hotels/$\{segment}
+
+        - id: reservation-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/v1/reservations/**
+          filters:
+            - RewritePath=/api/v1/reservations/(?<segment>.*), /api/v1/reservations/$\{segment}
+
+        - id: notification-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - RewritePath=/api/v1/notifications/(?<segment>.*), /api/v1/notifications/$\{segment}
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:your-256-bit-secret}
+  expiration: 86400000 # 24 hours
+
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  cloud:
+    gateway:
+      routes:
+        - id: hotel-service
+          uri: http://hotel-service:8080
+          predicates:
+            - Path=/api/v1/hotels/**
+
+        - id: reservation-service
+          uri: http://reservation-service:8080
+          predicates:
+            - Path=/api/v1/reservations/**
+
+        - id: notification-service
+          uri: http://notification-service:8080
+          predicates:
+            - Path=/api/v1/notifications/**
