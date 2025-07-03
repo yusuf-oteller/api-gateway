@@ -41,13 +41,11 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
 
             log.debug("Processing request for path: {}", path);
 
-            // Auth servisinin endpointleri serbest
             if (path.startsWith("/api/v1/auth/")) {
                 log.debug("Auth path detected, skipping JWT validation");
                 return chain.filter(exchange);
             }
 
-            // Authorization header kontrolü
             if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
                 log.warn("Unauthorized request - Missing Authorization header");
                 return unauthorizedResponse(exchange);
@@ -63,16 +61,17 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             Claims claims;
             try {
                 claims = extractClaims(token);
-                log.info("✅ JWT Token decoded successfully: Subject={}, Role={}",
+                log.info("JWT Token decoded successfully: Subject={}, Role={}",
                         claims.getSubject(), claims.get("role", String.class));
             } catch (Exception e) {
-                log.error("❌ JWT Token validation failed: {}", e.getMessage());
+                log.error("JWT Token validation failed: {}", e.getMessage());
                 return unauthorizedResponse(exchange);
             }
 
             ServerHttpRequest modifiedRequest = exchange.getRequest()
                     .mutate()
-                    .header("X-User-Id", claims.getSubject()) // Kullanıcı ID'sini ekleyelim
+                    .header("X-User-Id", claims.getSubject())
+                    .header("X-User-Role", claims.get("role", String.class))
                     .build();
 
             return chain.filter(exchange.mutate().request(modifiedRequest).build());

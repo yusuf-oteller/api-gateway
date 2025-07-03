@@ -13,8 +13,11 @@ public class SecurityConfig {
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         return http
-                .csrf(ServerHttpSecurity.CsrfSpec::disable) // ✅ CSRF'yi kapat
-                .authorizeExchange(auth -> auth.anyExchange().permitAll()) // ✅ Tüm istekleri açık bırak
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .authorizeExchange(exchange -> exchange
+                        .pathMatchers("/api/v1/auth/**").permitAll()
+                        .anyExchange().authenticated()
+                )
                 .build();
     }
 }
