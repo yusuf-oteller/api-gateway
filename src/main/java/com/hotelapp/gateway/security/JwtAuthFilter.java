@@ -6,7 +6,6 @@ import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
-import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,7 +16,6 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 @Component
@@ -25,7 +23,7 @@ import java.util.Base64;
 public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Config> {
 
     @Value("${jwt.secret}")
-    private String secret;
+    private String secretBase64;
 
     public static class Config {}
 
@@ -44,11 +42,6 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             if (path.startsWith("/api/v1/auth/")) {
                 log.debug("Auth path detected, skipping JWT validation");
                 return chain.filter(exchange);
-            }
-
-            if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
-                log.warn("Unauthorized request - Missing Authorization header");
-                return unauthorizedResponse(exchange);
             }
 
             String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -71,6 +64,7 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             ServerHttpRequest modifiedRequest = exchange.getRequest()
                     .mutate()
                     .header("X-User-Id", claims.getSubject())
+                    .header("X-User-Email", claims.get("email", String.class))
                     .header("X-User-Role", claims.get("role", String.class))
                     .build();
 
@@ -79,16 +73,14 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
     }
 
     private Claims extractClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
-    }
+        byte[] keyBytes = Base64.getDecoder().decode(secretBase64);
+        SecretKey key = Keys.hmacShaKeyFor(keyBytes);
 
-    private SecretKey getSigningKey() {
-        byte[] decodedKey = Base64.getDecoder().decode(secret);
-        return Keys.hmacShaKeyFor(decodedKey);
+        return Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     private Mono<Void> unauthorizedResponse(ServerWebExchange exchange) {
