@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: api-gateway
+
+  main:
+    web-application-type: reactive
+    allow-bean-definition-overriding: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  cloud:
+    gateway:
+      routes:
+        - id: hotel-service
+          uri: http://localhost:8089
+          predicates:
+            - Path=/api/v1/hotels/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 2
+                key-resolver: "#{@ipKeyResolver}"
+
+jwt:
+  secret: ZhV3+eY767wZQ4ce+qb8PbwanES3wA8XpBvAkC2ZiVA=
+  expiration: 86400000
+
+server:
+  port: 8089
+
+logging:
+  level:
+    root: WARN
+    org.springframework.cloud.gateway: DEBUG
+    com.hotelapp.gateway.security: DEBUG
+    org.springframework.web: DEBUG

@@ -1,7 +1,4 @@
 spring:
-  #profiles:
-    #active: local
-
   application:
     name: api-gateway
 
@@ -16,42 +13,45 @@ spring:
           uri: http://localhost:8080
           predicates:
             - Path=/actuator/health
+
         - id: auth-service
           predicates:
             - Path=/api/v1/auth/**
-          uri: http://auth-service:8084
+          uri: http://localhost:8084
           filters:
-          #- StripPrefix=1
+          # - StripPrefix=1
 
         - id: hotel-service
           predicates:
             - Path=/api/v1/hotels/**, /api/v1/rooms/**
           filters:
             - name: JwtAuthFilter
-          uri: http://hotel-service:8080
+          uri: http://localhost:8081
 
         - id: reservation-service
           predicates:
             - Path=/api/v1/reservations/**
           filters:
             - name: JwtAuthFilter
-          uri: http://reservation-service:8080
+          uri: http://localhost:8082
 
         - id: notification-service
           predicates:
             - Path=/api/v1/notifications/**
           filters:
             - name: JwtAuthFilter
-          uri: http://notification-service:8080
+          uri: http://localhost:8083
+
       default-filters:
         - name: RequestRateLimiter
           args:
             redis-rate-limiter.replenishRate: 10
             redis-rate-limiter.burstCapacity: 20
             key-resolver: "#{@ipKeyResolver}"
+
   data:
     redis:
-      host: localhost #localhost, redis
+      host: localhost
       port: 6379
 
 server:
@@ -59,7 +59,7 @@ server:
 
 jwt:
   secret: ${JWT_SECRET:ZhV3+eY767wZQ4ce+qb8PbwanES3wA8XpBvAkC2ZiVA=}
-  expiration: 86400000 # 24 saat
+  expiration: 86400000
 
 management:
   endpoints:
