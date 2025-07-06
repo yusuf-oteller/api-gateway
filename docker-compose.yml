@@ -2,13 +2,13 @@ version: '3.8'
 
 services:
   api-gateway:
+    container_name: api-gateway
     build: .
     environment:
       SERVICE_URL_HOTEL: http://hotel-service:8081
       SERVICE_URL_RESERVATION: http://reservation-service:8082
       SERVICE_URL_NOTIFICATION: http://notification-service:8083
       SERVICE_URL_AUTH: http://auth-service:8084
-      SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: ${JWT_SECRET:-ZhV3+eY767wZQ4ce+qb8PbwanES3wA8XpBvAkC2ZiVA=}
       JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5008"
     ports:
