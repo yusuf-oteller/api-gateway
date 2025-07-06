@@ -1,63 +1,96 @@
 package com.hotelapp.gateway.security;
 
+import com.hotelapp.gateway.security.JwtAuthFilter.Config;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
-import org.springframework.cloud.gateway.route.RouteLocator;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import javax.crypto.SecretKey;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
 import java.util.Base64;
 import java.util.Date;
 
-@WebFluxTest
-@Import({JwtAuthFilter.class})
+@ActiveProfiles("test")
 public class JwtAuthFilterTests {
 
-    @MockitoBean
-    private RouteLocator routeLocator;
+    private final String jwtSecret = "ZhV3+eY767wZQ4ce+qb8PbwanES3wA8XpBvAkC2ZiVA=";
 
-    @Value("${jwt.secret}")
-    private String secret;
-
-    private WebTestClient webTestClient;
+    private JwtAuthFilter jwtAuthFilter;
 
     @BeforeEach
-    public void setUp(WebTestClient.Builder builder) {
-        this.webTestClient = builder.baseUrl("http://localhost:8080").build();
+    void setUp() {
+        jwtAuthFilter = new JwtAuthFilter();
+        ReflectionTestUtils.setField(jwtAuthFilter, "secretBase64", jwtSecret);
     }
 
-    private String createJwt(String userId, String role, String secretKey) {
-        SecretKey key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretKey));
+    private String createJwt(String userId, String email, String role) {
+        byte[] keyBytes = Base64.getDecoder().decode(jwtSecret);
+        SecretKey key = Keys.hmacShaKeyFor(keyBytes);
+
         return Jwts.builder()
-                .setSubject(userId)
+                .subject(userId)
+                .claim("email", email)
                 .claim("role", role)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 3600000))
-                .signWith(key, SignatureAlgorithm.HS256)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 3600_000))
+                .signWith(key)
                 .compact();
     }
 
     @Test
-    public void testUnauthorizedRequest() {
-        webTestClient.get().uri("/api/v1/hotels")
-                .exchange()
-                .expectStatus().isUnauthorized();
+    void shouldRejectMissingAuthHeader() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/v1/hotels")
+        );
+
+        StepVerifier.create(jwtAuthFilter.apply(new Config()).filter(exchange, e -> Mono.empty()))
+                .verifyComplete();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
     }
 
     @Test
-    public void testValidTokenRequest() {
-        String token = createJwt("123", "USER", "ZhV3+eY767wZQ4ce+qb8PbwanES3wA8XpBvAkC2ZiVA=");
-        webTestClient.get().uri("/api/v1/hotels")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                .exchange()
-                .expectStatus().isOk();
+    void shouldAcceptValidToken() {
+        String token = createJwt("456", "test@example.com", "USER");
+
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/v1/hotels")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+        );
+
+        StepVerifier.create(jwtAuthFilter.apply(new Config()).filter(exchange, mutatedExchange -> {
+            String userId = mutatedExchange.getRequest().getHeaders().getFirst("X-User-Id");
+            String email = mutatedExchange.getRequest().getHeaders().getFirst("X-User-Email");
+            String role = mutatedExchange.getRequest().getHeaders().getFirst("X-User-Role");
+
+            assertEquals("456", userId);
+            assertEquals("test@example.com", email);
+            assertEquals("USER", role);
+
+            return Mono.empty();
+        })).verifyComplete();
+    }
+
+    @Test
+    void shouldSkipAuthForLoginPath() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/v1/auth/login")
+        );
+
+        StepVerifier.create(jwtAuthFilter.apply(new Config()).filter(exchange, e -> Mono.empty()))
+                .verifyComplete();
+
+        assertNull(exchange.getResponse().getStatusCode());
     }
 }
