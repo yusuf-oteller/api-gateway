@@ -28,28 +28,28 @@ spring:
             - Path=/api/v1/hotels/**, /api/v1/rooms/**
           filters:
             - name: JwtAuthFilter
-          uri: http://hotel-service:8080
+          uri: http://hotel-service:8081
 
         - id: reservation-service
           predicates:
             - Path=/api/v1/reservations/**
           filters:
             - name: JwtAuthFilter
-          uri: http://reservation-service:8080
+          uri: http://reservation-service:8082
 
         - id: notification-service
           predicates:
             - Path=/api/v1/notifications/**
           filters:
             - name: JwtAuthFilter
-          uri: http://notification-service:8080
+          uri: http://notification-service:8083
 
         - id: payment-service
           predicates:
             - Path=/api/v1/payments/**
           filters:
             - name: JwtAuthFilter
-          uri: http://payment-service:8080
+          uri: http://payment-service:8085
       default-filters:
         - name: RequestRateLimiter
           args:
