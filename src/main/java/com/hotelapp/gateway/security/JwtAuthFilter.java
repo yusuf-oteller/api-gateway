@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -16,6 +17,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 @Component
@@ -25,7 +27,8 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
     @Value("${jwt.secret}")
     private String secretBase64;
 
-    public static class Config {}
+    public static class Config {
+    }
 
     public JwtAuthFilter() {
         super(Config.class);
@@ -46,22 +49,32 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
 
             String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                log.warn("Unauthorized request - Invalid Authorization format");
-                return unauthorizedResponse(exchange);
+                log.warn("Unauthorized request - Missing or malformed Authorization header");
+                return unauthorizedResponse(exchange, "Missing or malformed Authorization header");
             }
 
             String token = authHeader.substring(7);
             Claims claims;
+
             try {
                 claims = extractClaims(token);
                 log.info("JWT Token decoded successfully: Subject={}, Role={}",
                         claims.getSubject(), claims.get("role", String.class));
+            } catch (io.jsonwebtoken.ExpiredJwtException e) {
+                log.warn("JWT expired: {}", e.getMessage());
+                return unauthorizedResponse(exchange, "Token expired");
+            } catch (io.jsonwebtoken.MalformedJwtException e) {
+                log.warn("Malformed JWT token: {}", e.getMessage());
+                return unauthorizedResponse(exchange, "Malformed token");
+            } catch (io.jsonwebtoken.JwtException e) {
+                log.warn("JWT error: {}", e.getMessage());
+                return unauthorizedResponse(exchange, "Invalid JWT token");
             } catch (Exception e) {
-                log.error("JWT Token validation failed: {}", e.getMessage());
-                return unauthorizedResponse(exchange);
+                log.error("Unexpected error during JWT validation: {}", e.getMessage());
+                return unauthorizedResponse(exchange, "Authentication error");
             }
 
-            ServerHttpRequest modifiedRequest = exchange.getRequest()
+            ServerHttpRequest modifiedRequest = request
                     .mutate()
                     .header("X-User-Id", claims.getSubject())
                     .header("X-User-Email", claims.get("email", String.class))
@@ -71,6 +84,7 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             return chain.filter(exchange.mutate().request(modifiedRequest).build());
         };
     }
+
 
     private Claims extractClaims(String token) {
         byte[] keyBytes = Base64.getDecoder().decode(secretBase64);
@@ -83,9 +97,13 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
                 .getPayload();
     }
 
-    private Mono<Void> unauthorizedResponse(ServerWebExchange exchange) {
+    private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String message) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
-        return response.setComplete();
+        response.getHeaders().add("Content-Type", "application/json");
+
+        String json = String.format("{\"error\": \"Unauthorized\", \"message\": \"%s\"}", message);
+        DataBuffer buffer = response.bufferFactory().wrap(json.getBytes(StandardCharsets.UTF_8));
+        return response.writeWith(Mono.just(buffer));
     }
 }
