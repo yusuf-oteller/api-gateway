@@ -42,8 +42,15 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
 
             log.debug("Processing request for path: {}", path);
 
-            if (path.startsWith("/api/v1/auth/")) {
-                log.debug("Auth path detected, skipping JWT validation");
+            if (
+                    path.startsWith("/api/v1/auth/") ||
+                            path.startsWith("/docs/auth/") ||
+                            path.startsWith("/docs/hotels/") ||
+                            path.startsWith("/docs/reservations/") ||
+                            path.startsWith("/docs/payments/") ||
+                            path.startsWith("/docs/main/")
+            ) {
+                log.debug("Swagger or Auth path detected, skipping JWT validation");
                 return chain.filter(exchange);
             }
 
